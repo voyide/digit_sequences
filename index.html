@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Universal Tuple Sequence Grid</title>
+    <style>
+        :root {
+            --bg: #0f0f13;
+            --surface: #1a1a24;
+            --primary: #00e5ff;
+            --accent: #ff4081;
+            --text-main: #ffffff;
+            --text-muted: #aaaaaa;
+            --border: #333344;
+        }
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+        }
+        
+        /* DESKTOP RESPONSIVE GRID */
+        .app-wrapper {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            max-width: 1300px;
+            width: 100%;
+        }
+        @media(min-width: 900px) {
+            .app-wrapper {
+                grid-template-columns: 380px 1fr;
+            }
+        }
+        
+        .controls-col { display: flex; flex-direction: column; gap: 20px; }
+        .view-col { display: flex; flex-direction: column; gap: 20px; }
+
+        h1, h2 { text-align: center; margin-top: 0; }
+        h1 { font-size: 1.4rem; margin-bottom: 5px; color: var(--primary); }
+        .subtitle { text-align: center; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px; font-style: italic; }
+        h2 { font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 15px; }
+        
+        .card {
+            background: var(--surface);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            width: 100%;
+        }
+        .row { display: flex; gap: 12px; margin-bottom: 15px; flex-wrap: wrap; }
+        .col { flex: 1; display: flex; flex-direction: column; min-width: 120px; }
+        
+        label { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+        input, select {
+            padding: 10px; background: #22222d; border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text-main); font-size: 0.95rem; width: 100%;
+            cursor: pointer;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--primary); }
+        
+        #canvas-container {
+            width: 100%; aspect-ratio: 1; background: #000;
+            border-radius: 8px; overflow: hidden; position: relative;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+        }
+        canvas, img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+        
+        #render-progress {
+            position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8);
+            color: var(--primary); padding: 4px 8px; border-radius: 4px;
+            font-family: monospace; font-size: 0.85rem; display: none; z-index: 10;
+        }
+
+        .legend {
+            display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+            margin-top: 10px; max-height: 120px; overflow-y: auto;
+            padding: 8px; background: rgba(0,0,0,0.3); border-radius: 8px;
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: bold; }
+        .cbox { width: 14px; height: 14px; border-radius: 4px; border: 1px solid #444; }
+        
+        button {
+            background: var(--primary); color: #000; font-weight: bold; font-size: 0.95rem;
+            padding: 14px; border: none; border-radius: 8px; width: 100%; cursor: pointer;
+            transition: transform 0.1s; box-shadow: 0 4px 10px rgba(0, 229, 255, 0.3); margin-top: 5px;
+        }
+        button:active { transform: scale(0.98); }
+        button:disabled { background: #555 !important; color: #888 !important; box-shadow: none !important; cursor: not-allowed; }
+        
+        #mathDetails {
+            width: 100%; height: 70px; background: #111; color: #ddd;
+            font-family: monospace; font-size: 0.8rem; padding: 10px;
+            border: 1px solid var(--border); border-radius: 8px; resize: none;
+            margin-bottom: 10px;
+        }
+
+        #logArea {
+            width: 100%; height: 110px; background: #000; color: #0f0;
+            font-family: monospace; font-size: 0.8rem; padding: 10px;
+            border: 1px solid var(--border); border-radius: 8px; resize: none; margin-top: 10px;
+        }
+
+        .actions { display: flex; gap: 10px; margin-top: 15px; width: 100%; }
+        .actions a, .actions button {
+            flex: 1; text-align: center; background: var(--accent); color: #fff; padding: 12px;
+            text-decoration: none; font-weight: bold; border-radius: 8px; border: none;
+            box-shadow: 0 4px 10px rgba(255, 64, 129, 0.3); box-sizing: border-box; display: none;
+        }
+        .btn-secondary { background: #333344; color: #fff; box-shadow: none; border: 1px solid #555; }
+    </style>
+</head>
+<body>
+
+    <div class="app-wrapper">
+        <!-- LEFT COLUMN: CONTROLS -->
+        <div class="controls-col">
+            <div class="card">
+                <h1>Universal Sequencer</h1>
+                <div class="subtitle">Multi-Dimensional Mathematics</div>
+                
+                <h2>Ruleset (LHS & RHS)</h2>
+                <div class="row">
+                    <div class="col">
+                        <label>LHS Operation</label>
+                        <select id="ruleLHS">
+                            <option value="0">| x_i - x_(i+1) |</option>
+                            <option value="1">| x_1 - x_(i+1) | (Anchor)</option>
+                            <option value="2">(x_(i+1) - x_i + b) mod b</option>
+                            <option value="3">(x_i + x_(i+1)) mod b</option>
+                            <option value="4">max(x_i, x_(i+1))</option>
+                            <option value="5">min(x_i, x_(i+1))</option>
+                            <option value="6">(x_i ⊕ x_(i+1)) mod b</option>
+                            <option value="7">||..|x_1 - x_2|..| - x_(i+1)|</option>
+                            <option value="8">(x_i × x_(i+1)) mod b</option>
+                            <option value="9">|(b - 1 - x_i) - x_(i+1)|</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        <label>RHS Constraint 1</label>
+                        <select id="ruleRHS1">
+                            <option value="0">= d_i</option>
+                            <option value="1">= b - 1 - d_i</option>
+                            <option value="2">≤ d_i</option>
+                            <option value="3">≥ d_i</option>
+                            <option value="4">≠ d_i</option>
+                            <option value="5">Parity ≡ d_i (mod 2)</option>
+                            <option value="6">= floor(b/2)</option>
+                            <option value="7">&lt; d_i</option>
+                            <option value="8">&gt; d_i</option>
+                            <option value="9">= (d_i + 1) mod b</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        <label>Logical Pairing</label>
+                        <select id="logicRHS">
+                            <option value="NONE">None (Use RHS 1 only)</option>
+                            <option value="AND">AND (Intersect)</option>
+                            <option value="OR">OR (Union)</option>
+                        </select>
+                    </div>
+                    <div class="col" id="containerRHS2" style="opacity: 0.4; pointer-events: none;">
+                        <label>RHS Constraint 2</label>
+                        <select id="ruleRHS2">
+                            <option value="0">= d_i</option>
+                            <option value="1" selected>= b - 1 - d_i</option>
+                            <option value="2">≤ d_i</option>
+                            <option value="3">≥ d_i</option>
+                            <option value="4">≠ d_i</option>
+                            <option value="5">Parity ≡ d_i (mod 2)</option>
+                            <option value="6">= floor(b/2)</option>
+                            <option value="7">&lt; d_i</option>
+                            <option value="8">&gt; d_i</option>
+                            <option value="9">= (d_i + 1) mod b</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Interactive Viewer</h2>
+                <div class="row">
+                    <div class="col"><label>Base (b)</label><input type="number" id="view_b" value="3" min="2" max="100"></div>
+                    <div class="col">
+                        <label>Scale (Dimension)</label>
+                        <select id="view_scale">
+                            <option value="1">b × b</option>
+                            <option value="2" selected>b² × b²</option>
+                            <option value="3">b³ × b³</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col"><label>Range Block (p)</label><input type="number" id="view_p" value="0" min="0"></div>
+                    <div class="col"><label>Modulo (m)</label><input type="number" id="view_m" value="4" min="2" max="255"></div>
+                </div>
+                <button class="btn-secondary" id="downloadHiResBtn">Download High-Res Render (4K)</button>
+            </div>
+
+            <div class="card">
+                <h2>GIF Animator</h2>
+                <div class="row">
+                    <div class="col">
+                        <label>Animation Mode</label>
+                        <select id="animMode">
+                            <option value="modeA">A: Fixed Base, Vary Block</option>
+                            <option value="modeB">B: Fixed Block, Vary Base</option>
+                            <option value="modeC">C: Fixed B & P, Vary Modulo</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row" id="modeA_inputs">
+                    <div class="col"><label>Base (b)</label><input type="number" id="animA_b" value="3" min="2"></div>
+                    <div class="col"><label>Block (p) Offset</label><input type="number" id="animA_g" value="0" min="0"></div>
+                </div>
+
+                <div class="row" id="modeB_inputs" style="display: none;">
+                    <div class="col"><label>Block (p)</label><input type="number" id="animB_p" value="0" min="0"></div>
+                    <div class="col"><label>Start Base</label><input type="number" id="animB_start" value="2" min="2"></div>
+                    <div class="col"><label>End Base</label><input type="number" id="animB_end" value="6" min="2"></div>
+                </div>
+
+                <div class="row" id="modeC_inputs" style="display: none;">
+                    <div class="col"><label>Base (b)</label><input type="number" id="animC_b" value="3" min="2"></div>
+                    <div class="col"><label>Block (p)</label><input type="number" id="animC_p" value="0" min="0"></div>
+                    <div class="col"><label>Mod Start</label><input type="number" id="animC_mStart" value="2" min="2"></div>
+                    <div class="col"><label>Mod End</label><input type="number" id="animC_mEnd" value="10" min="2"></div>
+                </div>
+
+                <button id="generateBtn">Compile Animation</button>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: VISUALIZATION -->
+        <div class="view-col">
+            <div class="card">
+                <textarea id="mathDetails" readonly></textarea>
+                <div id="canvas-container">
+                    <div id="render-progress">Rendering...</div>
+                    <canvas id="gridCanvas"></canvas>
+                </div>
+                <div id="legend-container" class="legend"></div>
+                
+                <div id="resultContainer" style="display: none; margin-top: 15px;">
+                    <h2 style="margin-top:20px;">GIF Render Result</h2>
+                    <img id="gifResult" alt="Animated GIF Result">
+                    <div class="actions">
+                        <a id="downloadBtn" download="sequence_grid.gif">Download GIF</a>
+                        <button id="shareBtn">Save / Share</button>
+                    </div>
+                </div>
+
+                <textarea id="logArea" readonly placeholder="System Logs will appear here..."></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- CommonJS Module Safe Import -->
+    <script>
+        window.module = { exports: {} };
+        window.exports = window.module.exports;
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/gifenc@1.0.3/dist/gifenc.js"></script>
+
+    <!-- MAIN LOGIC -->
+    <script>
+        const logArea = document.getElementById('logArea');
+        const mathDetails = document.getElementById('mathDetails');
+        function log(msg) {
+            const time = new Date().toLocaleTimeString();
+            logArea.value += `[${time}] ${msg}\n`;
+            logArea.scrollTop = logArea.scrollHeight;
+            console.log(msg);
+        }
+        const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+        // Logic UI Toggling
+        const logicSelect = document.getElementById('logicRHS');
+        const rhs2Container = document.getElementById('containerRHS2');
+        logicSelect.addEventListener('change', (e) => {
+            if(e.target.value === 'NONE') {
+                rhs2Container.style.opacity = '0.4';
+                rhs2Container.style.pointerEvents = 'none';
+            } else {
+                rhs2Container.style.opacity = '1';
+                rhs2Container.style.pointerEvents = 'auto';
+            }
+        });
+
+        const lhsText =[
+            "|x_i - x_(i+1)|", "|x_1 - x_(i+1)|", "(x_(i+1) - x_i + b) mod b",
+            "(x_i + x_(i+1)) mod b", "max(x_i, x_(i+1))", "min(x_i, x_(i+1))",
+            "(x_i ⊕ x_(i+1)) mod b", "||..|x_1 - x_2|..| - x_(i+1)|",
+            "(x_i × x_(i+1)) mod b", "|(b - 1 - x_i) - x_(i+1)|"
+        ];
+        const rhsText =[
+            "= d_i", "= b - 1 - d_i", "≤ d_i", "≥ d_i", "≠ d_i", 
+            "≡ d_i (mod 2)", "= floor(b/2)", "< d_i", "> d_i", "= (d_i + 1) mod b"
+        ];
+
+        function getFormulaText(rLHS, rRHS1, rRHS2, logic) {
+            let base = lhsText[rLHS] + " " + rhsText[rRHS1];
+            if(logic !== 'NONE') base += ` ${logic} ` + rhsText[rRHS2];
+            return base;
+        }
+
+        function updateMathDetails() {
+            let b = document.getElementById('view_b').value;
+            let p = document.getElementById('view_p').value;
+            let m = document.getElementById('view_m').value;
+            let s = document.getElementById('view_scale').value;
+            let rLHS = parseInt(document.getElementById('ruleLHS').value);
+            let rRHS1 = parseInt(document.getElementById('ruleRHS1').value);
+            let rRHS2 = parseInt(document.getElementById('ruleRHS2').value);
+            let logic = document.getElementById('logicRHS').value;
+            
+            let formula = getFormulaText(rLHS, rRHS1, rRHS2, logic);
+            let scaleStr = s === "1" ? "b" : s === "2" ? "b²" : "b³";
+            
+            mathDetails.value = `Rule: ${formula}\nBase (b): ${b} | Block Offset (p): ${p}\nModulo (m): ${m} | Grid Dim: ${scaleStr} × ${scaleStr}`;
+        }
+
+        // Procedural Color Generator
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) r = g = b = l; 
+            else {
+                const hue2rgb = (p, q, t) => {
+                    if(t < 0) t += 1; if(t > 1) t -= 1;
+                    if(t < 1/6) return p + (q - p) * 6 * t;
+                    if(t < 1/2) return q;
+                    if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                }
+                let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                let p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3); g = hue2rgb(p, q, h); b = hue2rgb(p, q, h - 1/3);
+            }
+            return[Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
+
+        let activePalette =[];
+        function generatePalette(modM) {
+            let p = [[30, 30, 45]]; // Mod 0
+            if(modM > 1) {
+                for (let i = 1; i < modM; i++) {
+                    p.push(hslToRgb(i / modM, 0.9, 0.55));
+                }
+            }
+            p.push([0, 0, 0]); // PADDING index
+            return p;
+        }
+
+        function updateLegend(modM, palette) {
+            const container = document.getElementById('legend-container');
+            container.innerHTML = '';
+            for(let i = 0; i < modM; i++) {
+                let c = palette[i];
+                container.innerHTML += `<div class="legend-item"><div class="cbox" style="background: rgb(${c[0]},${c[1]},${c[2]})"></div>${i}</div>`;
+            }
+        }
+
+        function evalRHS(val, d, bNum, rule) {
+            if(rule === 0) return val === d;
+            if(rule === 1) return val === (bNum - 1 - d);
+            if(rule === 2) return val <= d;
+            if(rule === 3) return val >= d;
+            if(rule === 4) return val !== d;
+            if(rule === 5) return (val % 2) === (d % 2);
+            if(rule === 6) return val === Math.floor(bNum / 2);
+            if(rule === 7) return val < d;
+            if(rule === 8) return val > d;
+            if(rule === 9) return val === (d + 1) % bNum;
+            return false;
+        }
+
+        // --- UNIVERSAL DP STATE TRANSITION ENGINE ---
+        function getTermMod(n, bNum, rLHS, rRHS1, rRHS2, logicRHS, modM) {
+            bNum = Number(bNum); 
+            let digits =[];
+            let bigB = BigInt(bNum);
+            
+            if (n === 0n) digits = [0];
+            else {
+                let temp = n;
+                while (temp > 0n) {
+                    digits.push(Number(temp % bigB));
+                    temp = temp / bigB;
+                }
+                digits.reverse(); 
+            }
+            
+            let v = new Int32Array(bNum).fill(1);
+            let nextV = new Int32Array(bNum);
+            let targetFlags = new Uint8Array(bNum);
+            
+            for (let i = 0; i < digits.length; i++) {
+                let d = digits[i];
+                targetFlags.fill(0);
+                
+                for(let val = 0; val < bNum; val++) {
+                    let m1 = evalRHS(val, d, bNum, rRHS1);
+                    let m2 = false;
+                    if(logicRHS !== 'NONE') m2 = evalRHS(val, d, bNum, rRHS2);
+                    
+                    let finalMatch = false;
+                    if(logicRHS === 'NONE') finalMatch = m1;
+                    else if(logicRHS === 'AND') finalMatch = m1 && m2;
+                    else if(logicRHS === 'OR') finalMatch = m1 || m2;
+                    
+                    if(finalMatch) targetFlags[val] = 1;
+                }
+                
+                nextV.fill(0);
+                
+                for (let s = 0; s < bNum; s++) {
+                    if (v[s] === 0) continue;
+                    for (let x = 0; x < bNum; x++) {
+                        let nextState = x; 
+                        let evalVal = 0;
+                        
+                        if (rLHS === 0) { evalVal = Math.abs(s - x); } 
+                        else if (rLHS === 1) { evalVal = Math.abs(s - x); nextState = s; } 
+                        else if (rLHS === 2) { evalVal = (x - s + bNum) % bNum; } 
+                        else if (rLHS === 3) { evalVal = (s + x) % bNum; } 
+                        else if (rLHS === 4) { evalVal = Math.max(s, x); } 
+                        else if (rLHS === 5) { evalVal = Math.min(s, x); } 
+                        else if (rLHS === 6) { evalVal = (s ^ x) % bNum; } 
+                        else if (rLHS === 7) { evalVal = Math.abs(s - x); nextState = evalVal; }
+                        else if (rLHS === 8) { evalVal = (s * x) % bNum; }
+                        else if (rLHS === 9) { evalVal = Math.abs((bNum - 1 - s) - x); }
+
+                        if (targetFlags[evalVal]) {
+                            nextV[nextState] = (nextV[nextState] + v[s]) % modM;
+                        }
+                    }
+                }
+                for(let j = 0; j < bNum; j++) v[j] = nextV[j];
+            }
+            
+            let totalWays = 0;
+            for (let i = 0; i < bNum; i++) totalWays = (totalWays + v[i]) % modM;
+            return totalWays;
+        }
+
+        // --- VIEWER INTERACTIVE DOM ---
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const progressTag = document.getElementById('render-progress');
+        
+        let renderVersion = 0;
+
+        async function renderGrid() {
+            renderVersion++;
+            let myVersion = renderVersion;
+            updateMathDetails();
+
+            let bNum = parseInt(document.getElementById('view_b').value) || 2;
+            let pVal = 0n; try { pVal = BigInt(document.getElementById('view_p').value); } catch(e) {}
+            let scaleOpt = parseInt(document.getElementById('view_scale').value);
+            let modM = parseInt(document.getElementById('view_m').value) || 4;
+            
+            let rLHS = parseInt(document.getElementById('ruleLHS').value);
+            let rRHS1 = parseInt(document.getElementById('ruleRHS1').value);
+            let rRHS2 = parseInt(document.getElementById('ruleRHS2').value);
+            let logicRHS = document.getElementById('logicRHS').value;
+            
+            if (bNum < 2) bNum = 2;
+            if (pVal < 0n) pVal = 0n;
+            if (modM < 2) modM = 2; if (modM > 255) modM = 255;
+
+            activePalette = generatePalette(modM);
+            updateLegend(modM, activePalette);
+            
+            let S = Math.pow(bNum, scaleOpt);
+            if (S > 1200) { log(`Limit scaling to 1200 for preview viewer.`); S = 1200; }
+
+            let cellD = Math.max(1, Math.floor(600 / S));
+            canvas.width = cellD * S;
+            canvas.height = cellD * S;
+            
+            let startN = pVal * BigInt(Math.pow(bNum, scaleOpt*2));
+            const imgData = new ImageData(S, S);
+            
+            progressTag.style.display = 'block';
+            let chunkRows = Math.max(1, Math.ceil(S / 20)); 
+
+            for (let r = 0; r < S; r++) {
+                if (renderVersion !== myVersion) return; 
+                for (let c = 0; c < S; c++) {
+                    let n = startN + BigInt(r * S + c);
+                    let modVal = getTermMod(n, bNum, rLHS, rRHS1, rRHS2, logicRHS, modM);
+                    
+                    let idx = (r * S + c) * 4;
+                    let col = activePalette[modVal];
+                    imgData.data[idx] = col[0]; imgData.data[idx+1] = col[1]; imgData.data[idx+2] = col[2]; imgData.data[idx+3] = 255;
+                }
+
+                if (r % chunkRows === 0 || r === S - 1) {
+                    progressTag.innerText = `Rendering ${Math.round(((r+1)/S)*100)}%`;
+                    const offCanvas = document.createElement('canvas');
+                    offCanvas.width = S; offCanvas.height = S;
+                    offCanvas.getContext('2d').putImageData(imgData, 0, 0);
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+                    await sleep(5); 
+                }
+            }
+            progressTag.style.display = 'none';
+        }
+
+        let inputTimeout;
+        const triggerRender = () => { clearTimeout(inputTimeout); inputTimeout = setTimeout(renderGrid, 150); };
+        
+        document.querySelectorAll('input:not([id^="anim"]), select:not([id^="anim"])').forEach(el => {
+            el.addEventListener('input', triggerRender);
+            el.addEventListener('change', triggerRender);
+        });
+
+        // HIGH RES DOWNLOAD
+        document.getElementById('downloadHiResBtn').addEventListener('click', async () => {
+            log("Generating High Resolution (4K scale) Image... Please wait.");
+            
+            let bNum = parseInt(document.getElementById('view_b').value) || 2;
+            let scaleOpt = parseInt(document.getElementById('view_scale').value);
+            let S = Math.pow(bNum, scaleOpt);
+            
+            if (S > 4000) { log("Grid size exceeds safe memory limits for Hi-Res export. Capping bounds."); S = 4000; }
+            
+            let cellD = Math.max(1, Math.floor(3000 / S)); // Target approx 3000px
+            let targetSize = S * cellD;
+            
+            let pVal = BigInt(document.getElementById('view_p').value || 0);
+            let modM = parseInt(document.getElementById('view_m').value) || 4;
+            let rLHS = parseInt(document.getElementById('ruleLHS').value);
+            let rRHS1 = parseInt(document.getElementById('ruleRHS1').value);
+            let rRHS2 = parseInt(document.getElementById('ruleRHS2').value);
+            let logicRHS = document.getElementById('logicRHS').value;
+
+            let startN = pVal * BigInt(Math.pow(bNum, scaleOpt*2));
+            const imgData = new ImageData(S, S);
+
+            for (let r = 0; r < S; r++) {
+                for (let c = 0; c < S; c++) {
+                    let n = startN + BigInt(r * S + c);
+                    let modVal = getTermMod(n, bNum, rLHS, rRHS1, rRHS2, logicRHS, modM);
+                    let idx = (r * S + c) * 4;
+                    let col = activePalette[modVal];
+                    imgData.data[idx] = col[0]; imgData.data[idx+1] = col[1]; imgData.data[idx+2] = col[2]; imgData.data[idx+3] = 255;
+                }
+            }
+            
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = S; offCanvas.height = S;
+            offCanvas.getContext('2d').putImageData(imgData, 0, 0);
+
+            const hrCanvas = document.createElement('canvas');
+            hrCanvas.width = targetSize; hrCanvas.height = targetSize;
+            let hrCtx = hrCanvas.getContext('2d');
+            hrCtx.imageSmoothingEnabled = false;
+            hrCtx.drawImage(offCanvas, 0, 0, targetSize, targetSize);
+            
+            let logicStr = logicRHS !== 'NONE' ? `-${logicRHS}-R2_${rRHS2}` : "";
+            let fName = `MathGrid_b${bNum}_s${scaleOpt}_m${modM}_L${rLHS}_R1_${rRHS1}${logicStr}.png`;
+            
+            const link = document.createElement('a');
+            link.download = fName;
+            link.href = hrCanvas.toDataURL("image/png");
+            link.click();
+            log(`Successfully exported High-Res image: ${fName}`);
+        });
+
+        window.onload = () => {
+            log("System Initialized.");
+            if (window.module.exports && window.module.exports.GIFEncoder) log("GIF Engine loaded.");
+            renderGrid();
+        };
+
+        // --- GIF ANIMATOR ---
+        const animMode = document.getElementById('animMode');
+        const generateBtn = document.getElementById('generateBtn');
+        const resultContainer = document.getElementById('resultContainer');
+        const gifResult = document.getElementById('gifResult');
+        const shareBtn = document.getElementById('shareBtn');
+        let generatedBlob = null;
+
+        animMode.addEventListener('change', (e) => {
+            document.getElementById('modeA_inputs').style.display = e.target.value === 'modeA' ? 'flex' : 'none';
+            document.getElementById('modeB_inputs').style.display = e.target.value === 'modeB' ? 'flex' : 'none';
+            document.getElementById('modeC_inputs').style.display = e.target.value === 'modeC' ? 'flex' : 'none';
+        });
+
+        function generateFrameIndices(bNum, pNum, S, startScale, gifSize, rLHS, rRHS1, rRHS2, logicRHS, modM) {
+            const gridValues = new Uint8Array(S * S);
+            const startN = BigInt(pNum) * BigInt(startScale) * BigInt(startScale);
+            
+            for (let r = 0; r < S; r++) {
+                for (let c = 0; c < S; c++) {
+                    gridValues[r * S + c] = getTermMod(startN + BigInt(r * S + c), bNum, rLHS, rRHS1, rRHS2, logicRHS, modM);
+                }
+            }
+            
+            const indexArray = new Uint8Array(gifSize * gifSize);
+            const cellD = Math.max(1, Math.floor(gifSize / S));
+            const actualGridSize = cellD * S;
+            const offsetX = Math.floor((gifSize - actualGridSize) / 2);
+            const offsetY = Math.floor((gifSize - actualGridSize) / 2);
+            
+            for (let y = 0; y < gifSize; y++) {
+                for (let x = 0; x < gifSize; x++) {
+                    let mapX = x - offsetX;
+                    let mapY = y - offsetY;
+                    
+                    if (mapX >= 0 && mapX < actualGridSize && mapY >= 0 && mapY < actualGridSize) {
+                        indexArray[y * gifSize + x] = gridValues[Math.floor(mapY / cellD) * S + Math.floor(mapX / cellD)];
+                    } else {
+                        indexArray[y * gifSize + x] = modM; 
+                    }
+                }
+            }
+            return indexArray;
+        }
+
+        generateBtn.addEventListener('click', async () => {
+            const GIFEncoder = window.module.exports.GIFEncoder;
+            if (!GIFEncoder) return log("ERROR: Encoder not loaded.");
+
+            generateBtn.disabled = true;
+            resultContainer.style.display = 'none';
+            shareBtn.style.display = 'none';
+            logArea.value = "";
+            log("Initializing Compilation...");
+
+            try {
+                const gif = GIFEncoder(); 
+                const mode = animMode.value;
+                const frameDelay = 500; 
+                
+                let rLHS = parseInt(document.getElementById('ruleLHS').value);
+                let rRHS1 = parseInt(document.getElementById('ruleRHS1').value);
+                let rRHS2 = parseInt(document.getElementById('ruleRHS2').value);
+                let logicRHS = document.getElementById('logicRHS').value;
+                let scaleOpt = parseInt(document.getElementById('view_scale').value);
+                
+                let logicStr = logicRHS !== 'NONE' ? `-${logicRHS}-R2_${rRHS2}` : "";
+                let dlName = `MathGrid_Animated_${mode}_L${rLHS}_R1_${rRHS1}${logicStr}.gif`;
+                
+                if (mode === 'modeA') {
+                    let bVal = parseInt(document.getElementById('animA_b').value) || 2;
+                    let gVal = parseInt(document.getElementById('animA_g').value) || 0;
+                    let modM = parseInt(document.getElementById('view_m').value) || 4;
+                    let curPal = generatePalette(modM);
+                    
+                    let S = Math.pow(bVal, scaleOpt);
+                    let GIF_SIZE = Math.max(400, Math.min(800, S)); 
+                    
+                    for (let i = 0; i < bVal; i++) {
+                        log(`Processing Map Frame ${i + 1}/${bVal}...`); await sleep(25); 
+                        let idxArray = generateFrameIndices(bVal, gVal * bVal + i, S, S, GIF_SIZE, rLHS, rRHS1, rRHS2, logicRHS, modM);
+                        gif.writeFrame(idxArray, GIF_SIZE, GIF_SIZE, { palette: curPal, delay: frameDelay });
+                    }
+                } else if(mode === 'modeB') {
+                    let pVal = parseInt(document.getElementById('animB_p').value) || 0;
+                    let bStart = parseInt(document.getElementById('animB_start').value) || 2;
+                    let bEnd = parseInt(document.getElementById('animB_end').value) || 5;
+                    let modM = parseInt(document.getElementById('view_m').value) || 4;
+                    let curPal = generatePalette(modM);
+                    
+                    let maxS = Math.pow(bEnd, scaleOpt);
+                    let GIF_SIZE = Math.max(400, Math.min(800, maxS)); 
+                    let totalFrames = bEnd - bStart + 1;
+                    
+                    for (let step = 0; step < totalFrames; step++) {
+                        let currentB = bStart + step;
+                        let S = Math.pow(currentB, scaleOpt);
+                        log(`Processing Scale Frame ${step + 1}/${totalFrames} (b=${currentB})...`); await sleep(25); 
+                        let idxArray = generateFrameIndices(currentB, pVal, S, S, GIF_SIZE, rLHS, rRHS1, rRHS2, logicRHS, modM);
+                        gif.writeFrame(idxArray, GIF_SIZE, GIF_SIZE, { palette: curPal, delay: frameDelay });
+                    }
+                } else if(mode === 'modeC') {
+                    let bVal = parseInt(document.getElementById('animC_b').value) || 3;
+                    let pVal = parseInt(document.getElementById('animC_p').value) || 0;
+                    let mStart = parseInt(document.getElementById('animC_mStart').value) || 2;
+                    let mEnd = parseInt(document.getElementById('animC_mEnd').value) || 10;
+                    
+                    let S = Math.pow(bVal, scaleOpt);
+                    let GIF_SIZE = Math.max(400, Math.min(800, S)); 
+                    let totalFrames = mEnd - mStart + 1;
+                    
+                    for (let step = 0; step < totalFrames; step++) {
+                        let currentM = mStart + step;
+                        log(`Processing Modulo Frame ${step + 1}/${totalFrames} (m=${currentM})...`); await sleep(25); 
+                        let tempPal = generatePalette(currentM);
+                        let idxArray = generateFrameIndices(bVal, pVal, S, S, GIF_SIZE, rLHS, rRHS1, rRHS2, logicRHS, currentM);
+                        gif.writeFrame(idxArray, GIF_SIZE, GIF_SIZE, { palette: tempPal, delay: frameDelay });
+                    }
+                }
+
+                log("Finalizing binary stream..."); await sleep(15);
+                gif.finish();
+                
+                const buffer = gif.bytesView();
+                generatedBlob = new Blob([buffer], { type: 'image/gif' });
+                const objUrl = URL.createObjectURL(generatedBlob);
+                
+                gifResult.src = objUrl;
+                document.getElementById('downloadBtn').href = objUrl;
+                document.getElementById('downloadBtn').download = dlName;
+                
+                resultContainer.style.display = 'block';
+                document.getElementById('downloadBtn').style.display = 'block';
+                if (navigator.share) shareBtn.style.display = 'block';
+
+                log("SUCCESS: Sequence matrix GIF fully generated!");
+                
+            } catch (err) { log(`CRITICAL ERROR: ${err.message}`); console.error(err); } 
+            finally { generateBtn.disabled = false; }
+        });
+
+        shareBtn.addEventListener('click', async () => {
+            if (!generatedBlob || !navigator.share) return;
+            try {
+                const file = new File([generatedBlob], "animated_sequence.gif", { type: "image/gif" });
+                await navigator.share({ files:[file], title: "Generated Math Matrix Animation" });
+                log("GIF dynamically shared.");
+            } catch (err) { log("Share sheet exited."); }
+        });
+    </script>
+</body>
+</html>
