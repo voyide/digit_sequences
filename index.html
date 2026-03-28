@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sequencer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #07070f;
+  --surface: rgba(255,255,255,0.04);
+  --glass: rgba(255,255,255,0.06);
+  --border: rgba(255,255,255,0.08);
+  --cyan: #00e8ff;
+  --pink: #ff2f7a;
+  --gold: #ffcc44;
+  --text: #f0f0ff;
+  --muted: rgba(240,240,255,0.38);
+  --radius: 14px;
+  --tab-h: 56px;
+  --viewer-h: 46vh;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%; width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Syne', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── GRAIN OVERLAY ─── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.5;
+}
+
+/* ─── TOP VIEWER ─── */
+#viewer {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--viewer-h);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+#viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 0;
+  flex-shrink: 0;
+}
+
+.app-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#info-pill {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--cyan);
+  background: rgba(0,232,255,0.08);
+  border: 1px solid rgba(0,232,255,0.2);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+}
+
+#canvas-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px 6px;
+  overflow: hidden;
+}
+
+#canvas-wrap::before {
+  content: '';
+  position: absolute; inset: 10px 14px 6px;
+  border-radius: var(--radius);
+  background: #000;
+  box-shadow: 0 0 40px rgba(0,232,255,0.08), inset 0 0 20px rgba(0,0,0,0.8);
+}
+
+canvas {
+  position: relative; z-index: 1;
+  max-width: 100%; max-height: 100%;
+  border-radius: calc(var(--radius) - 2px);
+  image-rendering: pixelated;
+  display: block;
+}
+
+#render-progress {
+  position: absolute; top: 20px; left: 24px; z-index: 5;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem; color: var(--cyan);
+  background: rgba(0,0,0,0.8);
+  padding: 4px 10px; border-radius: 999px;
+  border: 1px solid rgba(0,232,255,0.3);
+  display: none;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+#legend-strip {
+  display: flex;
+  gap: 6px;
+  padding: 4px 16px 8px;
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+#legend-strip::-webkit-scrollbar { display: none; }
+
+.legend-chip {
+  display: flex; align-items: center; gap: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem; font-weight: 600;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.legend-dot {
+  width: 8px; height: 8px;
+  border-radius: 3px;
+}
+
+/* ─── BOTTOM PANEL ─── */
+#panel {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  top: var(--viewer-h);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+#panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  opacity: 0.3;
+}
+
+/* ─── TAB BAR ─── */
+#tabs {
+  display: flex;
+  height: var(--tab-h);
+  flex-shrink: 0;
+  padding: 8px 12px 0;
+  gap: 6px;
+  background: var(--bg);
+}
+
+.tab-btn {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px 10px 0 0;
+  color: var(--muted);
+  font-family: 'Syne', sans-serif;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px;
+}
+
+.tab-btn svg { width: 12px; height: 12px; }
+
+.tab-btn.active {
+  background: var(--glass);
+  border-color: rgba(0,232,255,0.25);
+  color: var(--cyan);
+  box-shadow: 0 -2px 12px rgba(0,232,255,0.12);
+}
+
+/* ─── SCROLLABLE CONTENT ─── */
+#panel-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--glass);
+  border-top: 1px solid var(--border);
+  padding: 16px 14px 40px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+#panel-scroll::-webkit-scrollbar { width: 3px; }
+#panel-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
+
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ─── FORM ELEMENTS ─── */
+.section-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.field-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.field-group.single { grid-template-columns: 1fr; }
+.field-group.triple { grid-template-columns: 1fr 1fr 1fr; }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.field select,
+.field input[type="number"],
+.field input[type="text"] {
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  padding: 10px 12px;
+  width: 100%;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background-image: none;
+}
+
+.field select {
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='rgba(240,240,255,0.38)' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.field select:focus,
+.field input:focus {
+  outline: none;
+  border-color: rgba(0,232,255,0.4);
+  box-shadow: 0 0 0 2px rgba(0,232,255,0.08);
+}
+
+.field select option { background: #111; }
+
+.custom-input-wrap {
+  display: none;
+  margin-top: 4px;
+}
+.custom-input-wrap input {
+  font-size: 0.7rem !important;
+  color: #00ff88 !important;
+  background: #000 !important;
+  border-color: rgba(0,255,136,0.3) !important;
+}
+
+/* ─── LOGIC TOGGLE ─── */
+.logic-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.logic-pill {
+  flex: 1;
+  padding: 9px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: 'Syne', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.logic-pill.active-none { border-color: rgba(255,255,255,0.2); color: var(--text); }
+.logic-pill.active-and  { border-color: var(--cyan); color: var(--cyan); background: rgba(0,232,255,0.08); }
+.logic-pill.active-or   { border-color: var(--pink); color: var(--pink); background: rgba(255,47,122,0.08); }
+
+/* ─── BIG BUTTON ─── */
+.action-btn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  font-family: 'Syne', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 4px;
+}
+
+.action-btn.primary {
+  background: linear-gradient(135deg, #00e8ff 0%, #0090ff 100%);
+  color: #000;
+  box-shadow: 0 6px 24px rgba(0,232,255,0.25);
+}
+.action-btn.primary:active { transform: scale(0.97); }
+.action-btn.primary:disabled { background: #222; color: #555; box-shadow: none; cursor: not-allowed; }
+
+.action-btn.secondary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.action-btn.secondary:active { transform: scale(0.97); }
+
+.action-btn.danger {
+  background: linear-gradient(135deg, #ff2f7a 0%, #ff7a00 100%);
+  color: #fff;
+  box-shadow: 0 6px 24px rgba(255,47,122,0.2);
+}
+
+/* ─── LOG ─── */
+#logArea {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: rgba(0,255,136,0.8);
+  background: rgba(0,0,0,0.5);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  height: 90px;
+  width: 100%;
+  resize: none;
+  overflow-y: auto;
+  display: block;
+  margin-top: 10px;
+}
+
+/* ─── RESULT ─── */
+#resultCard {
+  display: none;
+  margin-bottom: 12px;
+}
+#resultCard img {
+  width: 100%;
+  border-radius: 12px;
+  display: block;
+  border: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.result-actions { display: flex; gap: 8px; }
+.result-actions a, .result-actions button {
+  flex: 1; text-align: center;
+  padding: 12px;
+  border-radius: 10px;
+  font-family: 'Syne', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+}
+.result-actions a { background: var(--pink); color: #fff; }
+.result-actions button { background: var(--surface); border: 1px solid var(--border); color: var(--muted); display: none; }
+
+/* ─── DIVIDER ─── */
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+/* ─── HIDDEN ─── */
+.hidden { display: none !important; }
+
+/* ─── MATH SUMMARY ─── */
+#mathSummary {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  line-height: 1.6;
+  color: var(--muted);
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════
+     TOP FIXED VIEWER
+════════════════════════════════ -->
+<div id="viewer">
+  <div id="viewer-header">
+    <span class="app-title">Sequencer</span>
+    <span id="info-pill">b=3 · m=4 · b²×b²</span>
+  </div>
+  <div id="canvas-wrap">
+    <div id="render-progress">computing…</div>
+    <canvas id="gridCanvas"></canvas>
+  </div>
+  <div id="legend-strip"></div>
+</div>
+
+<!-- ════════════════════════════════
+     BOTTOM PANEL
+════════════════════════════════ -->
+<div id="panel">
+
+  <!-- TAB BAR -->
+  <div id="tabs">
+    <button class="tab-btn active" data-tab="rule">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8h4M8 4v8M12 8h2"/></svg>
+      Rule
+    </button>
+    <button class="tab-btn" data-tab="view">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M6 6h4v4H6z"/></svg>
+      View
+    </button>
+    <button class="tab-btn" data-tab="post">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 10l3-3 3 3 4-5"/></svg>
+      Post
+    </button>
+    <button class="tab-btn" data-tab="export">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v7M5 6l3 3 3-3M3 12h10"/></svg>
+      Export
+    </button>
+  </div>
+
+  <!-- SCROLLABLE CONTENT -->
+  <div id="panel-scroll">
+
+    <!-- ── RULE TAB ── -->
+    <div class="tab-pane active" id="tab-rule">
+
+      <p class="section-label">LHS Operation</p>
+      <div class="field-group single">
+        <div class="field">
+          <select id="ruleLHS">
+            <option value="0">|x_i − x_(i+1)|</option>
+            <option value="1">|x_1 − x_(i+1)| · Anchor</option>
+            <option value="2">(x_(i+1) − x_i + b) mod b</option>
+            <option value="3">(x_i + x_(i+1)) mod b</option>
+            <option value="4">max(x_i, x_(i+1))</option>
+            <option value="5">min(x_i, x_(i+1))</option>
+            <option value="6">(x_i ⊕ x_(i+1)) mod b</option>
+            <option value="7">||…|x_1 − x_2|…| − x_(i+1)|</option>
+            <option value="8">(x_i × x_(i+1)) mod b</option>
+            <option value="9">|(b−1−x_i) − x_(i+1)|</option>
+            <option value="10">||x_(i−1)−x_i| − |x_i−x_(i+1)||</option>
+            <option value="11">|x_i − x_(i+1) − x_(i+2)|</option>
+            <option value="12">|(x_i)² mod b − x_(i+1)|</option>
+            <option value="14">||x_1−…−x_i| − |x_(i+1)−…−x_(k+1)|| Global</option>
+            <option value="15">Complex Z: |z_i − z_(i+1)| exact</option>
+            <option value="16">Complex Z1: floor |z_i − z_(i+1)|</option>
+            <option value="17">Complex Z2: ceil |z_i − z_(i+1)|</option>
+            <option value="18">Complex Z3: round |z_i − z_(i+1)|</option>
+            <option value="13">✦ Custom JS</option>
+          </select>
+          <div class="custom-input-wrap" id="wrap-customLHS">
+            <div class="field">
+              <input type="text" id="customLHS" placeholder="e.g. Math.abs(xi - x_next)">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="section-label">RHS Constraint</p>
+      <div class="field-group single">
+        <div class="field">
+          <select id="ruleRHS1">
+            <option value="0">= d_i</option>
+            <option value="1">= b − 1 − d_i</option>
+            <option value="2">≤ d_i</option>
+            <option value="3">≥ d_i</option>
+            <option value="4">≠ d_i</option>
+            <option value="5">parity ≡ d_i (mod 2)</option>
+            <option value="6">= floor(b/2)</option>
+            <option value="7">&lt; d_i</option>
+            <option value="8">&gt; d_i</option>
+            <option value="9">= (d_i + 1) mod b</option>
+            <option value="10">= (d_i + d_(i+1)) mod b</option>
+            <option value="11">= (d_i × d_(i+1)) mod b</option>
+            <option value="12">✦ Custom JS</option>
+          </select>
+          <div class="custom-input-wrap" id="wrap-customRHS1">
+            <div class="field">
+              <input type="text" id="customRHS1" placeholder="e.g. val === (di + 2) % b">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="section-label">Logic Pairing</p>
+      <div class="logic-row">
+        <div class="logic-pill active-none" data-logic="NONE">None</div>
+        <div class="logic-pill" data-logic="AND">AND</div>
+        <div class="logic-pill" data-logic="OR">OR</div>
+      </div>
+      <input type="hidden" id="logicRHS" value="NONE">
+
+      <div id="rhs2Block" class="hidden">
+        <div class="field-group single" style="margin-bottom:10px;">
+          <div class="field">
+            <label>Constraint 2</label>
+            <select id="ruleRHS2">
+              <option value="0">= d_i</option>
+              <option value="1" selected>= b − 1 − d_i</option>
+              <option value="2">≤ d_i</option>
+              <option value="3">≥ d_i</option>
+              <option value="4">≠ d_i</option>
+              <option value="5">parity ≡ d_i (mod 2)</option>
+              <option value="6">= floor(b/2)</option>
+              <option value="7">&lt; d_i</option>
+              <option value="8">&gt; d_i</option>
+              <option value="9">= (d_i + 1) mod b</option>
+              <option value="10">= (d_i + d_(i+1)) mod b</option>
+              <option value="11">= (d_i × d_(i+1)) mod b</option>
+              <option value="12">✦ Custom JS</option>
+            </select>
+            <div class="custom-input-wrap" id="wrap-customRHS2">
+              <div class="field">
+                <input type="text" id="customRHS2" placeholder="e.g. val <= di">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── VIEW TAB ── -->
+    <div class="tab-pane" id="tab-view">
+
+      <p id="mathSummary">—</p>
+
+      <p class="section-label">Parameters</p>
+      <div class="field-group triple">
+        <div class="field"><label>Base b</label><input type="number" id="view_b" value="3" min="2" max="100"></div>
+        <div class="field"><label>Modulo m</label><input type="number" id="view_m" value="4" min="2" max="255"></div>
+        <div class="field"><label>Tuple k+</label><input type="number" id="view_k" value="1" min="0" max="10"></div>
+      </div>
+
+      <div class="field-group">
+        <div class="field"><label>Block p</label><input type="number" id="view_p" value="0" min="0"></div>
+        <div class="field">
+          <label>Grid Scale</label>
+          <select id="view_scale">
+            <option value="1">b × b</option>
+            <option value="2" selected>b² × b²</option>
+            <option value="3">b³ × b³</option>
+            <option value="4">b⁴ × b⁴</option>
+            <option value="5">b⁵ × b⁵</option>
+            <option value="CUSTOM">Custom</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="viewCustomScale" class="field-group hidden">
+        <div class="field"><label>Rows R</label><input type="number" id="view_R" value="100" min="1"></div>
+        <div class="field"><label>Cols C</label><input type="number" id="view_C" value="100" min="1"></div>
+      </div>
+
+      <button class="action-btn secondary" id="downloadHiResBtn">↓ Download Hi-Res PNG</button>
+
+    </div>
+
+    <!-- ── POST TAB ── -->
+    <div class="tab-pane" id="tab-post">
+
+      <p class="section-label">Transformation</p>
+      <div class="field-group single">
+        <div class="field">
+          <select id="postType">
+            <option value="NONE">Raw Sequence</option>
+            <option value="ITERATE">Iterate a_k(n) → k times</option>
+            <option value="C_SEQ">C(n): Neighbor Congruence</option>
+            <option value="D_SEQ">D(n): Block Diagonal Sum</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="postIterateOpts" class="hidden">
+        <div class="field-group single">
+          <div class="field"><label>Depth k</label><input type="number" id="post_k" value="2" min="1" max="100"></div>
+        </div>
+      </div>
+
+      <div id="postGridOpts" class="hidden">
+        <div class="field-group single">
+          <div class="field">
+            <label>Map Size</label>
+            <select id="postGridType">
+              <option value="BASE1">b × b</option>
+              <option value="BASE2">b² × b²</option>
+              <option value="BASE3">b³ × b³</option>
+              <option value="CUSTOM">Custom</option>
+            </select>
+          </div>
+        </div>
+        <div id="postCustomGrid" class="field-group hidden">
+          <div class="field"><label>Rows R</label><input type="number" id="post_R" value="10" min="1"></div>
+          <div class="field"><label>Cols C</label><input type="number" id="post_C" value="10" min="1"></div>
+        </div>
+      </div>
+
+      <div id="postCongruenceOpts" class="hidden">
+        <div class="field-group">
+          <div class="field"><label>Target T</label><input type="number" id="post_T" value="0" min="0"></div>
+          <div class="field"><label>Modulo Mc</label><input type="number" id="post_Mc" value="4" min="1"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── EXPORT TAB ── -->
+    <div class="tab-pane" id="tab-export">
+
+      <!-- GIF Result (shown after generation) -->
+      <div id="resultCard">
+        <img id="gifResult" alt="">
+        <div class="result-actions">
+          <a id="downloadBtn" download="sequence_grid.gif">↓ Download GIF</a>
+          <button id="shareBtn">Share</button>
+        </div>
+        <div class="divider"></div>
+      </div>
+
+      <p class="section-label">Animation Mode</p>
+      <div class="field-group single">
+        <div class="field">
+          <select id="animMode">
+            <option value="modeA">A · Fixed Base, Vary Block</option>
+            <option value="modeB">B · Fixed Block, Vary Base</option>
+            <option value="modeC">C · Fixed B & P, Vary Modulo</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="modeA_inputs" class="field-group">
+        <div class="field"><label>Base b</label><input type="number" id="animA_b" value="3" min="2" max="100"></div>
+        <div class="field"><label>Block Offset</label><input type="number" id="animA_g" value="0" min="0"></div>
+      </div>
+
+      <div id="modeB_inputs" class="field-group hidden">
+        <div class="field"><label>Block p</label><input type="number" id="animB_p" value="0" min="0"></div>
+        <div class="field"><label>Base Start</label><input type="number" id="animB_start" value="2" min="2" max="100"></div>
+        <div class="field"><label>Base End</label><input type="number" id="animB_end" value="6" min="2" max="100"></div>
+      </div>
+
+      <div id="modeC_inputs" class="field-group hidden triple">
+        <div class="field"><label>Base b</label><input type="number" id="animC_b" value="3" min="2" max="100"></div>
+        <div class="field"><label>Block p</label><input type="number" id="animC_p" value="0" min="0"></div>
+        <div class="field"><label>Mod Start</label><input type="number" id="animC_mStart" value="2" min="2"></div>
+        <div class="field"><label>Mod End</label><input type="number" id="animC_mEnd" value="10" min="2"></div>
+      </div>
+
+      <button class="action-btn danger" id="generateBtn">▶ Compile GIF</button>
+
+      <textarea id="logArea" readonly placeholder="System logs…"></textarea>
+
+    </div>
+
+  </div><!-- /panel-scroll -->
+</div><!-- /panel -->
+
+
+<script>
+/* ════════════ HELPERS ════════════ */
+function safeInt(id, min, max) {
+  let el = document.getElementById(id);
+  if (!el) return min;
+  let val = parseInt(el.value);
+  if (isNaN(val)) val = min;
+  if (val < min) val = min;
+  if (max !== undefined && val > max) val = max;
+  return val;
+}
+
+const logArea = document.getElementById('logArea');
+function log(msg) {
+  const time = new Date().toLocaleTimeString();
+  logArea.value += `[${time}] ${msg}\n`;
+  logArea.scrollTop = logArea.scrollHeight;
+}
+
+/* ════════════ TABS ════════════ */
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ════════════ LOGIC PILLS ════════════ */
+const logicHidden = document.getElementById('logicRHS');
+const rhs2Block   = document.getElementById('rhs2Block');
+
+document.querySelectorAll('.logic-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    const val = pill.dataset.logic;
+    logicHidden.value = val;
+    document.querySelectorAll('.logic-pill').forEach(p => {
+      p.className = 'logic-pill';
+    });
+    if (val === 'NONE') pill.classList.add('active-none');
+    else if (val === 'AND') pill.classList.add('active-and');
+    else pill.classList.add('active-or');
+    rhs2Block.classList.toggle('hidden', val === 'NONE');
+    triggerRender();
+  });
+});
+document.querySelector('.logic-pill[data-logic="NONE"]').classList.add('active-none');
+
+/* ════════════ CUSTOM TOGGLES ════════════ */
+function bindCustom(selectId, wrapId) {
+  const sel  = document.getElementById(selectId);
+  const wrap = document.getElementById(wrapId);
+  sel.addEventListener('change', () => {
+    wrap.style.display = (sel.value === '13' || sel.value === '12') ? 'block' : 'none';
+  });
+}
+bindCustom('ruleLHS',  'wrap-customLHS');
+bindCustom('ruleRHS1', 'wrap-customRHS1');
+bindCustom('ruleRHS2', 'wrap-customRHS2');
+
+/* ════════════ VIEW SCALE ════════════ */
+document.getElementById('view_scale').addEventListener('change', e => {
+  document.getElementById('viewCustomScale').classList.toggle('hidden', e.target.value !== 'CUSTOM');
+  enforceBaseLimits();
+});
+
+function enforceBaseLimits() {
+  const s = document.getElementById('view_scale').value;
+  const bEl = document.getElementById('view_b');
+  const v = parseInt(bEl.value);
+  if (s === '4' && v > 15) { bEl.value = 15; log("Base capped at 15 for b⁴."); }
+  if (s === '5' && v > 8)  { bEl.value = 8;  log("Base capped at 8 for b⁵."); }
+}
+document.getElementById('view_b').addEventListener('input', enforceBaseLimits);
+
+/* ════════════ POST TYPE ════════════ */
+const postTypeSel     = document.getElementById('postType');
+const postGridTypeSel = document.getElementById('postGridType');
+
+function updatePostUI() {
+  const t = postTypeSel.value;
+  document.getElementById('postIterateOpts').classList.toggle('hidden', t !== 'ITERATE');
+  document.getElementById('postGridOpts').classList.toggle('hidden', t !== 'C_SEQ' && t !== 'D_SEQ');
+  document.getElementById('postCongruenceOpts').classList.toggle('hidden', t !== 'C_SEQ');
+  document.getElementById('postCustomGrid').classList.toggle('hidden', postGridTypeSel.value !== 'CUSTOM');
+}
+postTypeSel.addEventListener('change', updatePostUI);
+postGridTypeSel.addEventListener('change', updatePostUI);
+updatePostUI();
+
+/* ════════════ ANIM MODE ════════════ */
+document.getElementById('animMode').addEventListener('change', e => {['modeA_inputs','modeB_inputs','modeC_inputs'].forEach(id => {
+    document.getElementById(id).classList.add('hidden');
+  });
+  document.getElementById(e.target.value + '_inputs').classList.remove('hidden');
+});
+document.getElementById('modeA_inputs').classList.remove('hidden');
+
+/* ════════════ PALETTE ════════════ */
+function hslToRgb(h, s, l) {
+  let r, g, b;
+  if (s === 0) r = g = b = l;
+  else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    let p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3); g = hue2rgb(p, q, h); b = hue2rgb(p, q, h - 1/3);
+  }
+  return[Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+let activePalette =[];
+function generatePalette(modM) {
+  let p = [[12, 12, 22]];
+  if (modM > 1) for (let i = 1; i < modM; i++) p.push(hslToRgb(i / modM, 0.9, 0.55));
+  p.push([0, 0, 0]);
+  return p;
+}
+
+function updateLegend(modM, palette) {
+  const strip = document.getElementById('legend-strip');
+  strip.innerHTML = '';
+  for (let i = 0; i < modM; i++) {
+    const[r, g, b] = palette[i];
+    strip.innerHTML += `<div class="legend-chip"><div class="legend-dot" style="background:rgb(${r},${g},${b})"></div>${i}</div>`;
+  }
+}
+
+/* ════════════ INFO PILL ════════════ */
+function updateInfoPill() {
+  const b = safeInt('view_b', 2, 100);
+  const m = safeInt('view_m', 2, 255);
+  const s = document.getElementById('view_scale').value;
+  const scStr = s === 'CUSTOM' ? `${safeInt('view_R',100)}×${safeInt('view_C',100)}` : `b${['','','²','³','⁴','⁵'][parseInt(s)||2]}`;
+  document.getElementById('info-pill').textContent = `b=${b} · m=${m} · ${scStr}`;
+}
+
+function updateMathSummary() {
+  const b = safeInt('view_b', 2, 100);
+  const p = safeInt('view_p', 0);
+  const m = safeInt('view_m', 2, 255);
+  const k = safeInt('view_k', 0, 10);
+  const s = document.getElementById('view_scale').value;
+  const scStr = s === 'CUSTOM' ? `${safeInt('view_R',100)}×${safeInt('view_C',100)}` : `b^${s}×b^${s}`;
+  const lhsEl = document.getElementById('ruleLHS');
+  const rhs1El = document.getElementById('ruleRHS1');
+  const logic  = logicHidden.value;
+  const rhs2El = document.getElementById('ruleRHS2');
+
+  const lhsTxt = lhsEl.options[lhsEl.selectedIndex]?.text || '';
+  const rhs1Txt = rhs1El.options[rhs1El.selectedIndex]?.text || '';
+  const rhs2Txt = rhs2El.options[rhs2El.selectedIndex]?.text || '';
+
+  let rule = `LHS: ${lhsTxt}\nRHS: ${rhs1Txt}`;
+  if (logic !== 'NONE') rule += ` ${logic} ${rhs2Txt}`;
+  rule += `\nGrid: ${scStr}  b:${b}  m:${m}  k+:${k}  p:${p}`;
+  document.getElementById('mathSummary').textContent = rule;
+}
+
+/* ════════════ JIT COMPILER ════════════ */
+function generateSolverCodeString() {
+  let kOffset = safeInt('view_k', 0, 10);
+  let lhsType = parseInt(document.getElementById('ruleLHS').value);
+  let rhs1Type = parseInt(document.getElementById('ruleRHS1').value);
+  let rhs2Type = parseInt(document.getElementById('ruleRHS2').value);
+  let logic = logicHidden.value;
+
+  let customLHS  = document.getElementById('customLHS').value  || "Math.abs(xi - x_next)";
+  let customRHS1 = document.getElementById('customRHS1').value || "val === di";
+  let customRHS2 = document.getElementById('customRHS2').value || "val === di";
+
+  let needsPrev = false, needsNNext = false, needsX1 = false, needsComplex = false;
+  let lhsExpr = "";
+
+  switch(lhsType) {
+    case 0:  lhsExpr = "Math.abs(xi - x_next)"; break;
+    case 1:  lhsExpr = "Math.abs(x1 - x_next)"; needsX1 = true; break;
+    case 2:  lhsExpr = "(x_next - xi + b) % b"; break;
+    case 3:  lhsExpr = "(xi + x_next) % b"; break;
+    case 4:  lhsExpr = "Math.max(xi, x_next)"; break;
+    case 5:  lhsExpr = "Math.min(xi, x_next)"; break;
+    case 6:  lhsExpr = "(xi ^ x_next) % b"; break;
+    case 7:  lhsExpr = "Math.abs(acc - x_next)"; break;
+    case 8:  lhsExpr = "(xi * x_next) % b"; break;
+    case 9:  lhsExpr = "Math.abs((b - 1 - xi) - x_next)"; break;
+    case 10: lhsExpr = "Math.abs(Math.abs(x_prev - xi) - Math.abs(xi - x_next))"; needsPrev = true; break;
+    case 11: lhsExpr = "Math.abs(xi - x_next - x_nnext)"; needsNNext = true; break;
+    case 12: lhsExpr = "Math.abs((xi * xi) % b - x_next)"; break;
+    case 13:
+      lhsExpr = customLHS;
+      if (/\bx_prev\b/.test(lhsExpr)) needsPrev = true;
+      if (/\bx_nnext\b/.test(lhsExpr)) needsNNext = true;
+      if (/\bx1\b/.test(lhsExpr)) needsX1 = true;
+      break;
+    case 14: break;
+    case 15: lhsExpr = "Math.sqrt((xi_x - xnext_x)**2 + (xi_y - xnext_y)**2)"; needsComplex = true; break;
+    case 16: lhsExpr = "Math.floor(Math.sqrt((xi_x - xnext_x)**2 + (xi_y - xnext_y)**2))"; needsComplex = true; break;
+    case 17: lhsExpr = "Math.ceil(Math.sqrt((xi_x - xnext_x)**2 + (xi_y - xnext_y)**2))"; needsComplex = true; break;
+    case 18: lhsExpr = "Math.round(Math.sqrt((xi_x - xnext_x)**2 + (xi_y - xnext_y)**2))"; needsComplex = true; break;
+  }
+
+  let mapRHS = (type, ctm) => {
+    switch(type) {
+      case 0: return "val === di";
+      case 1: return "val === (b - 1 - di)";
+      case 2: return "val <= di";
+      case 3: return "val >= di";
+      case 4: return "val !== di";
+      case 5: return "(val % 2) === (di % 2)";
+      case 6: return "val === Math.floor(b/2)";
+      case 7: return "val < di";
+      case 8: return "val > di";
+      case 9: return "val === (di + 1) % b";
+      case 10: return "val === (di + d_next) % b";
+      case 11: return "val === (di * d_next) % b";
+      case 12: return ctm;
+    }
+  };
+
+  let rhs1Expr = mapRHS(rhs1Type, customRHS1);
+  let rhs2Expr = mapRHS(rhs2Type, customRHS2);
+  let condExpr = rhs1Expr;
+  if (logic === 'AND') condExpr = `(${rhs1Expr}) && (${rhs2Expr})`;
+  else if (logic === 'OR') condExpr = `(${rhs1Expr}) || (${rhs2Expr})`;
+
+  let body = `
+    function rawSolver(n, b) {
+      let bigB = BigInt(b), k = 0;
+      if (n === 0n) k = 1;
+      else { let t = n; while(t > 0n) { k++; t /= bigB; } }
+      let loopEnd = k + ${kOffset - 1};
+      if (loopEnd < 1) loopEnd = 1;
+      let dLength = loopEnd + 3;
+      let d = new Int32Array(dLength);
+      let temp = n;
+      if (n === 0n) d[1] = 0;
+      else {
+        let idx = k;
+        while(temp > 0n && idx > 0) { d[idx] = Number(temp % bigB); temp /= bigB; idx--; }
+      }
+      d[0] = d[k];
+      for(let w = k+1; w < dLength; w++) d[w] = d[(w-1)%k + 1];
+      let totalWays = 0n;
+  `;
+
+  if (lhsType === 14) {
+    body += `
+      let L = loopEnd + 1, maxSum = L * (b - 1);
+      let dp = new Array(maxSum + 1), next_dp = new Array(maxSum + 1);
+      for (let x1 = 0; x1 < b; x1++) {
+        for (let Sigma = x1; Sigma <= maxSum; Sigma++) {
+          dp.fill(0n); dp[x1] = 1n;
+          let possible = true;
+          for (let i = 1; i <= loopEnd; i++) {
+            let di = d[i], d_next = d[i+1], d_prev = d[i-1];
+            next_dp.fill(0n); let hasState = false;
+            for (let Ci = x1; Ci <= Sigma; Ci++) {
+              let ways = dp[Ci]; if (ways === 0n) continue;
+              for (let x_next = 0; x_next < b; x_next++) {
+                let Pi = 2*x1 - Ci, Si = 2*x_next + Ci - Sigma;
+                let val = Math.abs(Math.abs(Pi) - Math.abs(Si));
+                if (${condExpr}) { let nextC = Ci + x_next; if (nextC <= Sigma) { next_dp[nextC] += ways; hasState = true; } }
+              }
+            }
+            if (!hasState) { possible = false; break; }
+            let t = dp; dp = next_dp; next_dp = t;
+          }
+          if (possible) totalWays += dp[Sigma];
+        }
+      }
+      return totalWays; }
+    `;
+  } else if (needsComplex) {
+    body += `
+      let numStates = b * b;
+      let v = new Array(numStates).fill(1n), next_v = new Array(numStates);
+      for (let i = 1; i <= loopEnd; i++) {
+        let di = d[i], d_next = d[i+1], d_prev = d[i-1];
+        next_v.fill(0n);
+        for (let state = 0; state < numStates; state++) {
+          let ways = v[state]; if (ways === 0n) continue;
+          let xi_x = state % b, xi_y = Math.floor(state / b);
+          for (let nextState = 0; nextState < numStates; nextState++) {
+            let xnext_x = nextState % b, xnext_y = Math.floor(nextState / b);
+            let val = ${lhsExpr};
+            if (${condExpr}) next_v[nextState] += ways;
+          }
+        }
+        let t = v; v = next_v; next_v = t;
+      }
+      for(let i = 0; i < numStates; i++) totalWays += v[i];
+      return totalWays; }
+    `;
+  } else if (lhsType === 7) {
+    body += `
+      let v = new Array(b).fill(1n), next_v = new Array(b);
+      for (let i = 1; i <= loopEnd; i++) {
+        let di = d[i], d_next = d[i+1], d_prev = d[i-1];
+        next_v.fill(0n);
+        for (let acc = 0; acc < b; acc++) {
+          if (v[acc] === 0n) continue;
+          for (let x_next = 0; x_next < b; x_next++) {
+            let val = Math.abs(acc - x_next);
+            if (${condExpr}) next_v[val] += v[acc];
+          }
+        }
+        let t = v; v = next_v; next_v = t;
+      }
+      for(let i = 0; i < b; i++) totalWays += v[i];
+      return totalWays; }
+    `;
+  } else if (needsPrev || needsNNext) {
+    body += `let v = new Array(b * b); let next_v = new Array(b * b);`;
+    if (needsX1) {
+      body += `for (let x1 = 0; x1 < b; x1++) { v.fill(0n); `;
+      if (needsPrev) body += `for(let a=0; a<b; a++) v[a * b + x1] = 1n;`;
+      else body += `for(let b_val=0; b_val<b; b_val++) v[x1 * b + b_val] = 1n;`;
+    } else { body += `v.fill(1n);`; }
+    body += `
+      for (let i = 1; i <= loopEnd; i++) {
+        let di = d[i], d_next = d[i+1], d_prev = d[i-1];
+        next_v.fill(0n);
+        for (let a = 0; a < b; a++) {
+          for (let b_val = 0; b_val < b; b_val++) {
+            let ways = v[a * b + b_val]; if (ways === 0n) continue;
+            for (let c = 0; c < b; c++) {
+              let ${needsPrev ? "x_prev=a, xi=b_val, x_next=c" : "xi=a, x_next=b_val, x_nnext=c"};
+              let val = ${lhsExpr};
+              if (${condExpr}) next_v[b_val * b + c] += ways;
+            }
+          }
+        }
+        let t = v; v = next_v; next_v = t;
+      }
+    `;
+    if (needsX1) body += `for(let i=0; i<b*b; i++) totalWays += v[i]; }`;
+    else body += `for(let i=0; i<b*b; i++) totalWays += v[i];`;
+    body += ` return totalWays; }`;
+  } else {
+    body += `let v = new Array(b); let next_v = new Array(b);`;
+    if (needsX1) body += `for (let x1 = 0; x1 < b; x1++) { v.fill(0n); v[x1] = 1n;`;
+    else body += `v.fill(1n);`;
+    body += `
+      for (let i = 1; i <= loopEnd; i++) {
+        let di = d[i], d_next = d[i+1], d_prev = d[i-1];
+        next_v.fill(0n);
+        for (let xi = 0; xi < b; xi++) {
+          let ways = v[xi]; if (ways === 0n) continue;
+          for (let x_next = 0; x_next < b; x_next++) {
+            let val = ${lhsExpr};
+            if (${condExpr}) next_v[x_next] += ways;
+          }
+        }
+        let t = v; v = next_v; next_v = t;
+      }
+    `;
+    if (needsX1) body += `for(let i=0; i<b; i++) totalWays += v[i]; }`;
+    else body += `for(let i=0; i<b; i++) totalWays += v[i];`;
+    body += ` return totalWays; }`;
+  }
+
+  return body;
+}
+
+function createWorkerScript() {
+  let solverSource = generateSolverCodeString();
+  return `
+    ${solverSource}
+    const cache = new Map();
+    function baseSolver(n, b) {
+      if (cache.has(n)) return cache.get(n);
+      let res = rawSolver(n, b);
+      if (cache.size > 500000) cache.clear();
+      cache.set(n, res);
+      return res;
+    }
+    function getPostProcessedSolver(cfg) {
+      if (cfg.postType === 'NONE') {
+        let bigM = BigInt(cfg.modM);
+        return function(n) { return Number(baseSolver(n, cfg.bNum) % bigM); };
+      } else if (cfg.postType === 'ITERATE') {
+        let bigM = BigInt(cfg.modM);
+        return function(n) { let val = n; for (let i = 0; i < cfg.k_iter; i++) val = baseSolver(val, cfg.bNum); return Number(val % bigM); };
+      } else if (cfg.postType === 'C_SEQ') {
+        let R = BigInt(cfg.gridR); let C = BigInt(cfg.gridC); let blockSize = R * C;
+        let T = BigInt(cfg.T); let Mc = BigInt(cfg.Mc); let bigM = BigInt(cfg.modM);
+        return function(n) {
+          let block = n / blockSize; let idx = n % blockSize;
+          let r = Number(idx / C); let c = Number(idx % C); let count = 0n;
+          for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            let nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < Number(R) && nc >= 0 && nc < Number(C)) {
+              let n_prime = block * blockSize + BigInt(nr) * C + BigInt(nc);
+              if (baseSolver(n_prime, cfg.bNum) % Mc === T) count++;
+            }
+          }
+          return Number(count % bigM);
+        };
+      } else if (cfg.postType === 'D_SEQ') {
+        let R = BigInt(cfg.gridR); let C = BigInt(cfg.gridC); let blockSize = R * C; let bigM = BigInt(cfg.modM);
+        let minDim = R < C ? R : C;
+        return function(n) { let sum = 0n; let base_n = n * blockSize; for (let i = 0n; i < minDim; i++) { sum += baseSolver(base_n + i * C + i, cfg.bNum); } return Number(sum % bigM); };
+      }
+    }
+    self.onmessage = function(e) {
+      try {
+        let cfg = e.data;
+        let startN = BigInt(cfg.startN_str);
+        let S_R = cfg.render_R, S_C = cfg.render_C;
+        let solver = getPostProcessedSolver(cfg);
+        let buffer = new Uint8Array(S_R * S_C);
+        for (let r = 0; r < S_R; r++) for (let c = 0; c < S_C; c++) buffer[r * S_C + c] = solver(startN + BigInt(r * S_C + c));
+        self.postMessage({ buffer, id: cfg.id }, [buffer.buffer]);
+      } catch(err) { self.postMessage({ error: err.message, id: e.data.id }); }
+    };
+  `;
+}
+
+let currentWorker = null, workerCallId = 0, workerResolvers = {};
+
+function initWorker() {
+  if (currentWorker) currentWorker.terminate();
+  let blob = new Blob([createWorkerScript()], { type: 'application/javascript' });
+  currentWorker = new Worker(URL.createObjectURL(blob));
+  currentWorker.onmessage = function(e) {
+    let { buffer, id, error } = e.data;
+    if (workerResolvers[id]) {
+      if (error) workerResolvers[id].reject(new Error(error));
+      else workerResolvers[id].resolve(buffer);
+      delete workerResolvers[id];
+    }
+  };
+}
+
+async function runWorkerTask(cfg) {
+  return new Promise((resolve, reject) => {
+    let id = ++workerCallId;
+    workerResolvers[id] = { resolve, reject };
+    cfg.id = id;
+    currentWorker.postMessage(cfg);
+  });
+}
+
+/* ════════════ GRID DIMS ════════════ */
+function getGridDimensions(type, b, scaleVal, custR, custC) {
+  let R, C;
+  if (type === 'view') {
+    if (scaleVal === 'CUSTOM') { R = custR; C = custC; }
+    else { R = Math.pow(b, parseInt(scaleVal)); C = Math.pow(b, parseInt(scaleVal)); }
+  } else {
+    if (scaleVal === 'CUSTOM') { R = custR; C = custC; }
+    else if (scaleVal === 'BASE1') { R = b; C = b; }
+    else if (scaleVal === 'BASE2') { R = b*b; C = b*b; }
+    else if (scaleVal === 'BASE3') { R = b*b*b; C = b*b*b; }
+  }
+  return { R, C };
+}
+
+/* ════════════ RENDERER ════════════ */
+const canvas = document.getElementById('gridCanvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const progressTag = document.getElementById('render-progress');
+let renderVersion = 0;
+
+async function renderGrid() {
+  renderVersion++;
+  let myVersion = renderVersion;
+  updateInfoPill();
+  updateMathSummary();
+  enforceBaseLimits();
+
+  let bNum   = safeInt('view_b', 2, 100);
+  let pVal   = BigInt(safeInt('view_p', 0));
+  let modM   = safeInt('view_m', 2, 255);
+  let scaleOpt = document.getElementById('view_scale').value;
+  let vR = safeInt('view_R', 100), vC = safeInt('view_C', 100);
+  let mathDim = getGridDimensions('view', bNum, scaleOpt, vR, vC);
+
+  let pType = document.getElementById('postType').value;
+  let pGridScale = document.getElementById('postGridType').value;
+  let pR = safeInt('post_R', 10), pC = safeInt('post_C', 10);
+  let postDim = getGridDimensions('post', bNum, pGridScale, pR, pC);
+
+  activePalette = generatePalette(modM);
+  updateLegend(modM, activePalette);
+
+  let S_R = Math.min(mathDim.R, 800), S_C = Math.min(mathDim.C, 800);
+  let cellD = Math.max(1, Math.floor(600 / Math.max(S_R, S_C)));
+  canvas.width  = cellD * S_C;
+  canvas.height = cellD * S_R;
+
+  let startN = pVal * BigInt(mathDim.R) * BigInt(mathDim.C);
+  progressTag.style.display = 'block';
+
+  try {
+    initWorker();
+    let cfg = {
+      startN_str: startN.toString(), bNum, modM,
+      render_R: S_R, render_C: S_C, postType: pType,
+      gridR: postDim.R, gridC: postDim.C,
+      T: safeInt('post_T', 0), Mc: safeInt('post_Mc', 4), k_iter: safeInt('post_k', 1)
+    };
+    let buffer = await runWorkerTask(cfg);
+    if (renderVersion !== myVersion) return;
+
+    const imgData = new ImageData(S_C, S_R);
+    for (let r = 0; r < S_R; r++) for (let c = 0; c < S_C; c++) {
+      let idx = (r * S_C + c) * 4;
+      let [R_, G_, B_] = activePalette[buffer[r * S_C + c]];
+      imgData.data[idx] = R_; imgData.data[idx+1] = G_; imgData.data[idx+2] = B_; imgData.data[idx+3] = 255;
+    }
+    const off = document.createElement('canvas');
+    off.width = S_C; off.height = S_R;
+    off.getContext('2d').putImageData(imgData, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+  } catch (err) { log("Render error: " + err.message); }
+
+  progressTag.style.display = 'none';
+}
+
+let inputTimeout;
+const triggerRender = () => { clearTimeout(inputTimeout); inputTimeout = setTimeout(renderGrid, 280); };
+
+document.querySelectorAll('input:not([id^="anim"]), select:not([id^="anim"])').forEach(el => {
+  el.addEventListener('input', triggerRender);
+  el.addEventListener('change', triggerRender);
+});
+
+/* ════════════ HI-RES DOWNLOAD ════════════ */
+document.getElementById('downloadHiResBtn').addEventListener('click', async () => {
+  log("Generating hi-res render…");
+  enforceBaseLimits();
+  let bNum = safeInt('view_b', 2, 100), pVal = BigInt(safeInt('view_p', 0)), modM = safeInt('view_m', 2, 255);
+  let scaleOpt = document.getElementById('view_scale').value;
+  let vR = safeInt('view_R', 100), vC = safeInt('view_C', 100);
+  let mathDim = getGridDimensions('view', bNum, scaleOpt, vR, vC);
+  let pType = document.getElementById('postType').value;
+  let pGridScale = document.getElementById('postGridType').value;
+  let pR = safeInt('post_R', 10), pC = safeInt('post_C', 10);
+  let postDim = getGridDimensions('post', bNum, pGridScale, pR, pC);
+  let S_R = Math.min(mathDim.R, 4000), S_C = Math.min(mathDim.C, 4000);
+  let cellD = Math.max(1, Math.floor(4000 / Math.max(S_R, S_C)));
+  let startN = pVal * BigInt(mathDim.R) * BigInt(mathDim.C);
+  try {
+    initWorker();
+    let cfg = { startN_str: startN.toString(), bNum, modM, render_R: S_R, render_C: S_C, postType: pType, gridR: postDim.R, gridC: postDim.C, T: safeInt('post_T',0), Mc: safeInt('post_Mc',4), k_iter: safeInt('post_k',1) };
+    let buffer = await runWorkerTask(cfg);
+    const imgData = new ImageData(S_C, S_R);
+    for (let r = 0; r < S_R; r++) for (let c = 0; c < S_C; c++) {
+      let idx = (r * S_C + c) * 4;
+      let [R_, G_, B_] = activePalette[buffer[r * S_C + c]];
+      imgData.data[idx]=R_; imgData.data[idx+1]=G_; imgData.data[idx+2]=B_; imgData.data[idx+3]=255;
+    }
+    const off = document.createElement('canvas'); off.width = S_C; off.height = S_R;
+    off.getContext('2d').putImageData(imgData, 0, 0);
+    const hr = document.createElement('canvas'); hr.width = S_C*cellD; hr.height = S_R*cellD;
+    const hCtx = hr.getContext('2d'); hCtx.imageSmoothingEnabled = false;
+    hCtx.drawImage(off, 0, 0, hr.width, hr.height);
+    const link = document.createElement('a'); link.download = `seq_b${bNum}_m${modM}.png`;
+    link.href = hr.toDataURL("image/png"); link.click();
+    log(`Exported ${hr.width}×${hr.height} PNG.`);
+  } catch (err) { log("HR failed: " + err.message); }
+});
+
+/* ════════════ GIF ANIMATOR ════════════ */
+let generatedBlob = null;
+
+async function processGifFrame(gif, GIF_SIZE, cfg, curPal) {
+  let buffer = await runWorkerTask(cfg);
+  const indexArray = new Uint8Array(GIF_SIZE * GIF_SIZE);
+  const S_R = cfg.render_R, S_C = cfg.render_C;
+  const cellD = Math.max(1, Math.floor(GIF_SIZE / Math.max(S_R, S_C)));
+  const actualW = cellD * S_C, actualH = cellD * S_R;
+  const offsetX = Math.floor((GIF_SIZE - actualW) / 2);
+  const offsetY = Math.floor((GIF_SIZE - actualH) / 2);
+  for (let y = 0; y < GIF_SIZE; y++) for (let x = 0; x < GIF_SIZE; x++) {
+    let mx = x - offsetX, my = y - offsetY;
+    indexArray[y * GIF_SIZE + x] = (mx >= 0 && mx < actualW && my >= 0 && my < actualH)
+      ? buffer[Math.floor(my / cellD) * S_C + Math.floor(mx / cellD)]
+      : cfg.modM;
+  }
+  gif.writeFrame(indexArray, GIF_SIZE, GIF_SIZE, { palette: curPal, delay: 500 });
+}
+
+document.getElementById('generateBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true; logArea.value = '';
+  
+  let GIFEncoder;
+  try {
+    log("Loading encoder module...");
+    // Dynamically loading pure Native ES Module (bypass window and scripts issue)
+    const mod = await import('https://cdn.jsdelivr.net/npm/gifenc@1.0.3/+esm');
+    GIFEncoder = mod.GIFEncoder;
+  } catch (err) {
+    btn.disabled = false;
+    return log("ERROR: Failed to load encoder module. " + err.message);
+  }
+
+  if (!GIFEncoder) {
+    btn.disabled = false;
+    return log("ERROR: GIF encoder not found in module.");
+  }
+
+  log("Compiling animation…");
+  enforceBaseLimits(); initWorker();
+
+  let scaleOpt = document.getElementById('view_scale').value;
+  let vR = safeInt('view_R', 100), vC = safeInt('view_C', 100);
+  let pType = document.getElementById('postType').value;
+  let pGridScale = document.getElementById('postGridType').value;
+  let pR = safeInt('post_R', 10), pC = safeInt('post_C', 10);
+
+  try {
+    const gif = GIFEncoder();
+    const mode = document.getElementById('animMode').value;
+    let baseCfg = { postType: pType, gridR: pR, gridC: pC, T: safeInt('post_T',0), Mc: safeInt('post_Mc',4), k_iter: safeInt('post_k',1) };
+
+    if (mode === 'modeA') {
+      let bVal = safeInt('animA_b', 2, 100), gVal = safeInt('animA_g', 0), modM = safeInt('view_m', 2, 255);
+      let curPal = generatePalette(modM);
+      let mathDim = getGridDimensions('view', bVal, scaleOpt, vR, vC);
+      let pDim = getGridDimensions('post', bVal, pGridScale, pR, pC);
+      baseCfg.gridR = pDim.R; baseCfg.gridC = pDim.C;
+      let S_R = Math.min(mathDim.R, 600), S_C = Math.min(mathDim.C, 600);
+      let GIF_SIZE = Math.max(400, Math.min(600, Math.max(S_R, S_C)));
+      for (let i = 0; i < bVal; i++) {
+        log(`Frame ${i+1}/${bVal}`);
+        let startN = BigInt(gVal * bVal + i) * BigInt(mathDim.R) * BigInt(mathDim.C);
+        await processGifFrame(gif, GIF_SIZE, { ...baseCfg, startN_str: startN.toString(), bNum: bVal, modM, render_R: S_R, render_C: S_C }, curPal);
+      }
+    } else if (mode === 'modeB') {
+      let pVal = safeInt('animB_p', 0), bStart = safeInt('animB_start', 2, 100), bEnd = safeInt('animB_end', bStart, 100);
+      let modM = safeInt('view_m', 2, 255), curPal = generatePalette(modM);
+      let maxDim = getGridDimensions('view', bEnd, scaleOpt, vR, vC);
+      let GIF_SIZE = Math.max(400, Math.min(600, Math.max(maxDim.R, maxDim.C)));
+      for (let step = 0; step <= bEnd - bStart; step++) {
+        let cb = bStart + step;
+        let mathDim = getGridDimensions('view', cb, scaleOpt, vR, vC);
+        let pDim = getGridDimensions('post', cb, pGridScale, pR, pC);
+        let S_R = Math.min(mathDim.R, 600), S_C = Math.min(mathDim.C, 600);
+        let startN = BigInt(pVal) * BigInt(mathDim.R) * BigInt(mathDim.C);
+        log(`Frame ${step+1}/${bEnd-bStart+1} (b=${cb})`);
+        await processGifFrame(gif, GIF_SIZE, { ...baseCfg, startN_str: startN.toString(), bNum: cb, modM, render_R: S_R, render_C: S_C, gridR: pDim.R, gridC: pDim.C }, curPal);
+      }
+    } else if (mode === 'modeC') {
+      let bVal = safeInt('animC_b', 2, 100), pVal = safeInt('animC_p', 0);
+      let mStart = safeInt('animC_mStart', 2, 255), mEnd = safeInt('animC_mEnd', mStart, 255);
+      let mathDim = getGridDimensions('view', bVal, scaleOpt, vR, vC);
+      let pDim = getGridDimensions('post', bVal, pGridScale, pR, pC);
+      baseCfg.gridR = pDim.R; baseCfg.gridC = pDim.C;
+      let S_R = Math.min(mathDim.R, 600), S_C = Math.min(mathDim.C, 600);
+      let GIF_SIZE = Math.max(400, Math.min(600, Math.max(S_R, S_C)));
+      let startN = BigInt(pVal) * BigInt(mathDim.R) * BigInt(mathDim.C);
+      for (let step = 0; step <= mEnd - mStart; step++) {
+        let cm = mStart + step;
+        log(`Frame ${step+1}/${mEnd-mStart+1} (m=${cm})`);
+        await processGifFrame(gif, GIF_SIZE, { ...baseCfg, startN_str: startN.toString(), bNum: bVal, modM: cm, render_R: S_R, render_C: S_C }, generatePalette(cm));
+      }
+    }
+
+    gif.finish();
+    const bytes = gif.bytesView();
+    generatedBlob = new Blob([bytes], { type: 'image/gif' });
+    const url = URL.createObjectURL(generatedBlob);
+    document.getElementById('gifResult').src = url;
+    document.getElementById('downloadBtn').href = url;
+    document.getElementById('downloadBtn').download = `seq_${mode}.gif`;
+    document.getElementById('resultCard').style.display = 'block';
+    if (navigator.share) document.getElementById('shareBtn').style.display = 'block';
+    log("✓ GIF ready.");
+  } catch (err) { log("ERROR: " + err.message); }
+  finally { btn.disabled = false; }
+});
+
+document.getElementById('shareBtn').addEventListener('click', async () => {
+  if (!generatedBlob || !navigator.share) return;
+  try {
+    await navigator.share({ files:[new File([generatedBlob], "sequence.gif", { type: "image/gif" })], title: "Math Sequence" });
+  } catch { log("Share cancelled."); }
+});
+
+/* ════════════ INIT ════════════ */
+window.onload = () => {
+  log("Engine initialized.");
+  renderGrid();
+};
+</script>
+</body>
+</html>
